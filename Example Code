@@ -1,0 +1,365 @@
+# the restatix package performs basic statistical tests including 
+# t-test, Wilcoxon test, ANOVA, Kruskal-Wallis and correlation analyses.
+
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(datarium)
+
+
+## Independent sample t test 
+# get the 'PlantGrowthT.csv' dataset. This is a subset of the 'Plantgrowth'
+# dataset
+
+PlantGrowthT <- read.csv("PlantGrowthT.csv")
+view(PlantGrowthT)
+
+# independent variable: group: control vs. treatment1
+# dependent variable: weight
+
+# extract a subset of random sample data from each group
+set.seed(123)
+PlantGrowthT %>% sample_n_by(group, size = 2)
+
+
+
+
+
+# Let's create summary of descriptive statistics to 
+# have general understanding of the data
+
+PlantGrowthT %>%
+  group_by(group) %>%
+  get_summary_stats(weight, type="mean_sd")
+
+# visualization using box plot
+ggboxplot(PlantGrowthT,x="group",y="weight")
+
+# checking assumptions
+
+
+
+
+## check for outliers
+PlantGrowthT %>%
+  group_by(group) %>%
+  identify_outliers(weight)
+
+# 2 outliers were identified in the trial1 group. But they are not 
+# extreme outliers. So it's ok to run the test
+
+# check normality using the Shapiro Wilk test
+PlantGrowthT %>%
+  group_by(group) %>%
+  shapiro_test(weight)
+
+# the p values for both the controlled group and the trial1 group are
+# non-significant, indicating the data is normally distributed
+
+# We can draw a qq plot to illustrate the result. If the data points are
+# close to the trend line in the qq plot, the data is normally or close to
+# normally distributed
+ggqqplot(PlantGrowthT, x = "weight", facet.by = "group")
+
+
+# check homogeneity assumption using the widely adopted Levene's test. 
+# Note that this is optional because by default R runs the Welch t test, 
+# which doesn't assume equal variance
+
+PlantGrowthT %>%
+  levene_test(weight ~ group)
+
+# p is non-significant. assumption is met
+
+# Finally, we are ready to compute t
+IToutput <- PlantGrowthT %>%
+  t_test(weight ~ group) %>%
+  add_significance()
+IToutput
+
+# p value > 0.05. non-significant. There is no significant difference 
+# in weight between the 2 groups.
+
+# paired sample t test
+
+
+
+
+
+
+
+
+
+# We'll use the 'selfesteem' dataset. The dataset 
+# contains selfesteem scores reported by 10 people at three different 
+# time points.  we will use paired sample t test to 
+# compare the scores collected at t1 and t2
+# selfesteemT <- read.csv("selfesteemlongT.csv")
+data("selfesteem",package= "datarium")
+view(selfesteem)
+
+# Data manipulation
+# We only need data for t1 and t2
+selfesteem <- selfesteem[,c(1,2,3)]
+view(selfesteem)
+
+# change the format of the data so that t1 and t2 are listed in one column
+# we call this the "long" format
+
+selfesteem.long <- selfesteem %>%
+  gather(key = "time", value = "score", t1, t2)
+
+view(selfesteem.long)
+
+# view some random data from each group
+set.seed(123)
+selfesteem.long %>% sample_n_by(time, size = 2)
+
+
+# Get summary statistics
+selfesteem.long %>%
+  group_by(time) %>%
+  get_summary_stats(score, type = "mean_sd")
+
+# visualize the data in pairs
+pairedplot <- ggpaired(selfesteem.long, x = "time", y = "score", 
+                order = c("t1", "t2"),
+                ylab = "Score", xlab = "Time point")
+pairedplot
+
+# Check assumptions
+
+# Check outliers
+# calculate the difference in each pair
+selfesteem <- selfesteem %>% mutate(differences = t1 - t2)
+head(selfesteem, 5)
+
+selfesteem %>% identify_outliers(differences)
+
+# data from id2 is an extreme outlier.
+# when there are extreme outliers, experts have different opinions about 
+# how to deal with them. Some suggest removing them. Some disagree. 
+# The decision is related to the specific field and context.
+
+# Let's remove the data of id2
+selfesteem <- selfesteem[-c(2),]
+view(selfesteem)
+
+# Check normality assumption using Shapiro Wilk test
+selfesteem %>% shapiro_test(differences) 
+# p value of the test is smaller than 0.05. The data is not normally 
+# distributed. Non-parametric test is a better choice for this dataset
+
+# Visualize it using the QQ plot 
+ggqqplot(selfesteem, "differences")
+
+# Assuming the assumptions are met, compute the t test. 
+# You need to specify the 'paired' parameter to be true
+PToutput <- selfesteem.long %>%
+  t_test(score ~ time, paired = TRUE) %>%
+  add_significance()
+PToutput
+
+# p is substantially smaller than 0.05. There is significant different
+# between the scores collected at t1 and t2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# One way ANOVA
+# There are different packages in R to compute ANOVA. 
+# The aov() package computes Type I sum of squares and should only be used
+# when the group sizes are equal
+# The Anova() package computes Type II and III sum of squares and is similar
+# to commercial software (SAS, SPSS)
+# The anova_test() package is designed for facilitating factorial experiments. 
+# It is very flexible and easy to use to analyze between, within, and mixed
+# designs.
+
+# We will focus on the anova_test package
+
+# One way ANOVA (an extension of the independent t test)
+
+# get the built in 'PlantGrowth' Dataset
+data("PlantGrowth")
+view(PlantGrowth)
+# write.csv(PlantGrowth,file = "PlantGrowth.csv", row.names = F)
+
+# independent variable: group (control, treatment1, treatment2)
+# dependent variable: weight
+# one plant contribute one data point
+
+# the R pipes operator: %>% , specifies a chain of actions
+# the sample_n_by() function randomly select one row of data from each group
+
+PlantGrowth %>% sample_n_by(group,size = 1)
+
+# get the value of the levels of the grouping(independent) variable
+levels(PlantGrowth$group)
+
+# Let's get summary of some descriptive statistics to have a feeling of the data
+PlantGrowth %>%
+  group_by(group) %>%
+  get_summary_stats(weight, type="mean_sd")
+
+# visualization using box plot
+ggboxplot(PlantGrowth,x="group",y="weight")
+
+# check the assumptions of ANOVA
+# check outliers
+PlantGrowth %>%
+  group_by(group) %>%
+  identify_outliers(weight)
+# there are no extreme outliers.
+
+
+# checking the normality assumption
+# There are different ways to check for normality. 
+# We use the approach of analyzing ANOVA model residuals
+
+# build linear model
+model <- lm(weight ~group, data = PlantGrowth)
+
+# create a QQ plot of residuals to show the correlation between a given data 
+# and the normal distribution. Points falling along the reference line 
+# indicates normal distribution
+ggqqplot(residuals(model))
+
+# You can see that the points fall very close to the reference line
+
+# use the Shapiro Wilk test of normality 
+shapiro_test(residuals(model))
+
+# the p value of the Shapiro test is non-significant, confirming normality
+
+# Now let's check the homogeneity of variance assumption
+# Levenes' test of homogeneity is widely used
+PlantGrowth %>%
+  levene_test(weight ~ group)
+
+# The p value of the Levenes' test is non-significant, confirming homogeneity
+# of variance. If the p value of the Levene's test is significant, you need to 
+# transform the data to logarithm and then run the anova_test
+
+# We are finally ready to compute the ANOVA
+pg.aov <- PlantGrowth %>% anova_test(weight ~ group)
+# or
+pg.aov <-  anova_test(data = PlantGrowth, weight ~ group )
+pg.aov
+
+# The F value is 4.846, p = 0.016 <0.05. So there is significant difference
+# among the three groups
+
+# But we don't know the specific groups between which the difference exists
+# in order to know that we need to run post-hoc tests
+# We'll use the Tukey's test in this example
+pg.pwc <- PlantGrowth %>% tukey_hsd(weight ~ group)
+pg.pwc
+
+# The Tukey's test result suggests only the difference between treatment1
+# and treatment2 is significant.
+
+
+
+# One way repeated measures ANOVA
+# We'll use the 'selfesteem' dataset used for paired t test
+# Since the dataset has been modified, let's load the data again
+
+data("selfesteem",package= "datarium")
+view(selfesteem)
+
+
+# independent variable: times of measurement (3 times)
+# dependent variable: selfesteem score
+# one person contributes 3 data points
+
+# transform the data format into long format (3 columns to 1)
+
+# the gather() function: gather columns into key-value pairs
+?gather
+
+
+selfesteem <- selfesteem %>%
+  gather(key = "time", value = "score", t1, t2, t3) %>%
+  convert_as_factor(id, time) # convert id and time into factor
+
+view(selfesteem)
+
+
+# get descriptive statistics
+selfesteem %>%
+  group_by(time) %>%
+  get_summary_stats(score, type = "mean_sd")
+
+# box plot to understand data
+bxp <- ggboxplot(selfesteem, x = "time", y = "score", add = "point") 
+# add = "point' shows all the data points in each group
+bxp
+
+# checking assumptions
+## outliers
+selfesteem %>%
+  group_by(time) %>%
+  identify_outliers(score)
+# 2 data points were identified as outliers, but not extreme outliers. 
+# it is acceptable.
+
+## normal distribution assumption, Shapiro score with p >0.05 confirms normal distribution
+selfesteem %>%
+  group_by(time) %>%
+  shapiro_test(score)
+
+## qqplot visualize the correlation between given data and normal distribution
+## on the plot, all the data falls along the reference line, confirming normal distribution
+ggqqplot(selfesteem, "score", facet.by = "time")
+
+# assumption of sphericity
+# The assumption of sphericity is automatically checked through the
+# Mauchly's test of sphericity in the R anova-test() function.
+# When violation of sphericity is detected, the get_anova_table() function
+# automatically corrects it using the Greenhouse-Geisser sphericity correction
+
+
+# computing the Repeated measures ANOVA F
+res.aov <- anova_test(data = selfesteem, dv = score, within = time, wid = id)
+get_anova_table(res.aov)
+
+# the p value is lower than 0.05. There is significant difference
+
+# post-hoc test. We'll use the bonferroni test
+bonf <- pairwise_t_test(data = selfesteem, 
+                        score~time,
+                        paired = T,
+                        p.adjust.method = "bonferroni")
+bonf
+
+# export selfesteem dataset to save as a local file
+write.table(selfesteem,file="selfesteemlong.csv", sep=",") #check the file, any problem
+
+# by default, R exports the row numbers. We need to remove it by setting row.names to False.
+write.table(selfesteem,file="selfesteemlong.csv", row.names=F,sep=",")
+
+# clear environment
+rm(list=ls())
+
